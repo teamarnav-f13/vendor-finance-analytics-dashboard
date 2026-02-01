@@ -1,7 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // IMPORTANT: Replace with your actual API Gateway URL
-const API_BASE_URL = 'https://0wek2322jl.execute-api.ap-south-1.amazonaws.com/prod';
+const API_BASE_URL = 'https://0wek2322jl.execute-api.ap-south-1.amazonaws.com/prod/dashboard';
 
 /**
  * Get JWT token from current authenticated session
