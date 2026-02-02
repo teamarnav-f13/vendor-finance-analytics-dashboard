@@ -23,7 +23,7 @@ function App() {
         Header() {
           return (
             <div style={{ textAlign: 'center', padding: '20px' }}>
-              <h1>🏪 Vendor Sales & Finance Dashboard</h1>
+              <h1>Vendor Sales & Finance Dashboard</h1>
               <p>Sign in to access your analytics</p>
             </div>
           );
