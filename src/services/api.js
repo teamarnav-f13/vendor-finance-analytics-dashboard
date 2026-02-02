@@ -38,7 +38,7 @@ async function apiRequest(endpoint, options = {}) {
   const config = {
     ...options,
     headers: {
-      Authorization: token,
+      Authorization: 'Bearer ${token}',
       'Content-Type': 'application/json',
       ...options.headers,
     },
