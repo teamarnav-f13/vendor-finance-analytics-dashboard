@@ -16,7 +16,7 @@ async function apiRequest(endpoint, options = {}) {
     ...options,
     headers: {
       // ✅ TEMPLATE STRING (BACKTICKS)
-      Authorization: `Bearer ${token}`,
+      Authorization: token,
       'Content-Type': 'application/json',
       ...options.headers,
     },
