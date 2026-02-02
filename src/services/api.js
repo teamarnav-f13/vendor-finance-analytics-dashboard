@@ -38,17 +38,17 @@ async function apiRequest(endpoint, options = {}) {
   const config = {
     ...options,
     headers: {
-      Authorization: token ,
+      Authorization: token,
       'Content-Type': 'application/json',
       ...options.headers,
     },
   };
 
-  const response = await fetch(${API_BASE_URL}${endpoint}, config);
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || API Error: ${response.status});
+    throw new Error(error.message || `API Error: ${response.status}`);
   }
 
   return response.json();
@@ -60,9 +60,9 @@ async function apiRequest(endpoint, options = {}) {
 export const vendorAPI = {
   getDashboard: () => apiRequest('/dashboard'),
   getAnalytics: (period = 'month') =>
-    apiRequest(/analytics?period=${period}),
+    apiRequest(`/analytics?period=${period}`),
   getOrders: (status = 'all', limit = 50) =>
-    apiRequest(/orders?status=${status}&limit=${limit}),
+    apiRequest(`/orders?status=${status}&limit=${limit}`),
 };
 
 export { getAuthToken, getVendorId };
