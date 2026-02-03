@@ -99,7 +99,7 @@ function VendorDashboard({ user }) {
       {/* Metrics Grid */}
       <div className="metrics-grid">
         <div className="metric-card">
-          <h3>💵 Total Sales</h3>
+          <h3>💵 Gross Revenue</h3>
           <p className="metric-value">
             ${dashboardData.totalSales?.toLocaleString() || 0}
           </p>
@@ -107,20 +107,20 @@ function VendorDashboard({ user }) {
         </div>
 
         <div className="metric-card">
-          <h3>💰 Net Revenue</h3>
+           <h3>💰 Net Revenue</h3>
           <p className="metric-value">
-            ${dashboardData.netRevenue?.toLocaleString() || 0} {/* ✅ FIX */}
+           ₹{dashboardData.netRevenue?.toLocaleString() || 0}
           </p>
-          <span>After Commission</span>
+          <span style={{ fontSize: '0.85rem', color: '#28a745' }}>
+           After Commission
+          </span>
         </div>
 
         <div className="metric-card">
           <h3>✅ Completed Orders</h3>
-          <p className="metric-value">
-            {dashboardData.completedOrders || 0}
-          </p>
-          <span>
-            {dashboardData.totalTransactions || 0} total orders {/* ✅ FIX */}
+          <p className="metric-value">{dashboardData.completedOrders || 0}</p>
+          <span style={{ fontSize: '0.85rem', color: '#666' }}>
+           Successfully processed
           </span>
         </div>
 
