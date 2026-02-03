@@ -109,7 +109,7 @@ function VendorDashboard({ user }) {
         <div className="metric-card">
            <h3>💰 Net Revenue</h3>
           <p className="metric-value">
-           ₹{dashboardData.netRevenue?.toLocaleString() || 0}
+           ₹{dashboardData.monthlyRevenue?.toLocaleString() || 0}
           </p>
           <span style={{ fontSize: '0.85rem', color: '#28a745' }}>
            After Commission
