@@ -1,0 +1,292 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+
+const client = new DynamoDBClient({ region: 'ap-south-1' });
+const dynamodb = DynamoDBDocumentClient.from(client);
+const snsClient = new SNSClient({ region: 'ap-south-1' });
+
+const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN || 'arn:aws:sns:ap-south-1:638175212987:VendorAnalyticsAlerts';
+
+export const handler = async (event) => {
+    console.log('Event:', JSON.stringify(event, null, 2));
+    
+    try {
+        const vendorId = event.requestContext.authorizer.claims.sub;
+        const period = event.queryStringParameters?.period || 'month';
+
+        console.log('Fetching analytics for period:', period);
+
+        // ✅ Query ALL transactions (remove Limit!)
+        const params = {
+            TableName: 'VendorSales',
+            IndexName: 'vendor-timestamp-index',
+            KeyConditionExpression: 'vendor_id = :vendorId',
+            ExpressionAttributeValues: {
+                ':vendorId': vendorId
+            }
+            // ✅ NO LIMIT - get all data
+        };
+
+        const command = new QueryCommand(params);
+        const result = await dynamodb.send(command);
+        const allTransactions = result.Items || [];
+
+        console.log(`Found ${allTransactions.length} total transactions`);
+
+        // ✅ Filter by date range in JavaScript
+        const { startDate, endDate } = getDateRange(period);
+        const transactions = allTransactions.filter(t => {
+            const transactionDate = new Date(t.timestamp);
+            return transactionDate >= startDate && transactionDate <= endDate;
+        });
+
+        console.log(`Filtered to ${transactions.length} transactions for period: ${period}`);
+
+        // Check for anomalies and send alerts
+        await checkAndSendAlerts(transactions, vendorId, period);
+
+        // Generate analytics in format frontend expects
+        const analytics = {
+            salesTrend: getDailyRevenue(transactions),
+            topProducts: getTopProducts(transactions),
+            statusBreakdown: getStatusBreakdown(transactions),
+            commissionTrend: getCommissionTrend(transactions)
+        };
+
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                period: period,
+                dateRange: {
+                    start: startDate.toISOString().split('T')[0],
+                    end: endDate.toISOString().split('T')[0]
+                },
+                transactionCount: transactions.length,
+                ...analytics
+            })
+        };
+
+    } catch (error) {
+        console.error('Error:', error);
+        
+        // Send SNS alert for Lambda errors
+        await sendSNSAlert({
+            type: 'ERROR',
+            message: 'Vendor Analytics Lambda Error',
+            details: {
+                error: error.message,
+                stack: error.stack,
+                timestamp: new Date().toISOString()
+            }
+        });
+
+        return {
+            statusCode: 500,
+            headers: { 'Access-Control-Allow-Origin': '*' },
+            body: JSON.stringify({ error: error.message })
+        };
+    }
+};
+
+// ✅ Get date range based on period
+function getDateRange(period) {
+    const endDate = new Date();
+    const startDate = new Date();
+
+    switch(period) {
+        case 'week':
+            startDate.setDate(startDate.getDate() - 7);
+            break;
+        case 'month':
+            startDate.setDate(startDate.getDate() - 30);
+            break;
+        case 'quarter':
+            startDate.setDate(startDate.getDate() - 90);
+            break;
+        case 'all':
+            startDate.setFullYear(2020, 0, 1); // Start from Jan 1, 2020
+            break;
+        default:
+            startDate.setDate(startDate.getDate() - 30);
+    }
+
+    return { startDate, endDate };
+}
+
+async function checkAndSendAlerts(transactions, vendorId, period) {
+    try {
+        const statusBreakdown = getStatusBreakdown(transactions);
+        const totalTransactions = transactions.length;
+        const refundCount = statusBreakdown.REFUNDED || 0;
+        const refundRate = totalTransactions > 0 ? (refundCount / totalTransactions) * 100 : 0;
+
+        if (refundRate > 5 && totalTransactions > 5) {
+            await sendSNSAlert({
+                type: 'HIGH_REFUND_RATE',
+                message: `High refund rate detected for vendor ${vendorId}`,
+                details: {
+                    vendorId,
+                    period,
+                    refundRate: refundRate.toFixed(2) + '%',
+                    refundCount,
+                    totalTransactions,
+                    timestamp: new Date().toISOString()
+                }
+            });
+        }
+
+        const highValueTransactions = transactions.filter(t => 
+            t.payment_status === 'COMPLETED' && Number(t.gross_amount) > 10000
+        );
+
+        if (highValueTransactions.length > 0) {
+            await sendSNSAlert({
+                type: 'HIGH_VALUE_TRANSACTIONS',
+                message: `${highValueTransactions.length} high-value transaction(s) detected`,
+                details: {
+                    vendorId,
+                    period,
+                    count: highValueTransactions.length,
+                    totalValue: highValueTransactions.reduce((sum, t) => sum + Number(t.gross_amount || 0), 0).toFixed(2),
+                    timestamp: new Date().toISOString()
+                }
+            });
+        }
+
+    } catch (alertError) {
+        console.error('Error checking/sending alerts:', alertError);
+    }
+}
+
+async function sendSNSAlert(alertData) {
+    try {
+        const message = {
+            default: JSON.stringify(alertData, null, 2),
+            email: formatEmailAlert(alertData)
+        };
+
+        const params = {
+            TopicArn: SNS_TOPIC_ARN,
+            Subject: `[Vendor Analytics] ${alertData.type}: ${alertData.message}`,
+            Message: JSON.stringify(message),
+            MessageStructure: 'json'
+        };
+
+        const command = new PublishCommand(params);
+        await snsClient.send(command);
+        console.log('SNS alert sent successfully:', alertData.type);
+    } catch (error) {
+        console.error('Failed to send SNS alert:', error);
+    }
+}
+
+function formatEmailAlert(alertData) {
+    return `
+Vendor Analytics Alert
+======================
+
+Alert Type: ${alertData.type}
+Message: ${alertData.message}
+
+Details:
+${JSON.stringify(alertData.details, null, 2)}
+
+---
+This is an automated alert from the Vendor Analytics System.
+Timestamp: ${new Date().toISOString()}
+    `.trim();
+}
+
+function getDailyRevenue(transactions) {
+    const dailyData = {};
+    
+    transactions.forEach(t => {
+        if (t.payment_status === 'COMPLETED') {
+            const date = t.timestamp.split('T')[0];
+            if (!dailyData[date]) {
+                dailyData[date] = { date, amount: 0, orders: 0 };
+            }
+            dailyData[date].amount += Number(t.net_amount || 0);
+            dailyData[date].orders += 1;
+        }
+    });
+
+    return Object.values(dailyData)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(d => ({
+            date: d.date,
+            amount: Number(d.amount.toFixed(2)),
+            orders: d.orders
+        }));
+}
+
+function getTopProducts(transactions) {
+    const productData = {};
+    
+    transactions.forEach(t => {
+        if (t.payment_status === 'COMPLETED') {
+            const key = t.product_id || t.product_name;
+            if (!productData[key]) {
+                productData[key] = {
+                    productId: t.product_id,
+                    productName: t.product_name,
+                    revenue: 0,
+                    quantity: 0,
+                    orders: 0
+                };
+            }
+            productData[key].revenue += Number(t.gross_amount || 0);
+            productData[key].quantity += Number(t.quantity || 0);
+            productData[key].orders += 1;
+        }
+    });
+
+    return Object.values(productData)
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5)
+        .map(p => ({
+            ...p,
+            revenue: Number(p.revenue.toFixed(2))
+        }));
+}
+
+function getStatusBreakdown(transactions) {
+    const breakdown = {
+        COMPLETED: 0,
+        PENDING: 0,
+        REFUNDED: 0,
+        FAILED: 0
+    };
+
+    transactions.forEach(t => {
+        breakdown[t.payment_status] = (breakdown[t.payment_status] || 0) + 1;
+    });
+
+    return breakdown;
+}
+
+function getCommissionTrend(transactions) {
+    const commissionData = {};
+    
+    transactions.forEach(t => {
+        if (t.payment_status === 'COMPLETED') {
+            const date = t.timestamp.split('T')[0];
+            if (!commissionData[date]) {
+                commissionData[date] = { date, commission: 0 };
+            }
+            commissionData[date].commission += Number(t.platform_commission || 0);
+        }
+    });
+
+    return Object.values(commissionData)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(c => ({
+            date: c.date,
+            commission: Number(c.commission.toFixed(2))
+        }));
+}
