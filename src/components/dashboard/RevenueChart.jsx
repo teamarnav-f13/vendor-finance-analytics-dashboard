@@ -14,7 +14,7 @@ function RevenueChart({ data }) {
 
   return (
     <div className="card">
-      <h2>📈 Daily Revenue Trend</h2>
+      <h2>📈 Revenue Trend</h2>
       <div style={{ width: '100%', height: 300, marginTop: '1rem' }}>
         <ResponsiveContainer>
           <LineChart data={data}>
@@ -43,7 +43,7 @@ function RevenueChart({ data }) {
               dataKey="amount" 
               stroke="#667eea" 
               strokeWidth={3}
-              name="Daily Revenue"
+              name="Revenue"
               dot={{ fill: '#667eea', r: 4 }}
               activeDot={{ r: 6 }}
             />
