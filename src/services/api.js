@@ -88,10 +88,10 @@ async function apiRequest(endpoint, options = {}) {
 export const vendorAPI = {
   /**
    * Get vendor dashboard data
-   * GET /dashboard
+   * GET /dashboard?period=month
    */
-  getDashboard: async () => {
-    return apiRequest('/dashboard');
+  getDashboard: async (period = 'month') => {
+    return apiRequest(`/dashboard?period=${period}`);
   },
 
   /**
