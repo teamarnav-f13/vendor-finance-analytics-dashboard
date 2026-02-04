@@ -12,10 +12,11 @@ function VendorDashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [jwtToken, setJwtToken] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('month'); // ✅ New state
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [selectedPeriod]); // ✅ Reload when period changes
 
   async function loadDashboardData() {
     try {
@@ -32,11 +33,11 @@ function VendorDashboard({ user }) {
 
       console.log('✅ JWT Token obtained');
       console.log('👤 Vendor ID:', vendorId);
-      console.log('📡 Fetching dashboard data from real backend...');
+      console.log('📡 Fetching dashboard data for period:', selectedPeriod);
 
       const [dashboard, analytics] = await Promise.all([
-        vendorAPI.getDashboard(),
-        vendorAPI.getAnalytics('month')
+        vendorAPI.getDashboard(selectedPeriod), // ✅ Pass period
+        vendorAPI.getAnalytics(selectedPeriod)   // ✅ Pass period
       ]);
 
       console.log('✅ Dashboard data received:', dashboard);
@@ -70,7 +71,22 @@ function VendorDashboard({ user }) {
       <div className="error-container">
         <h2>⚠️ Unable to load dashboard</h2>
         <p style={{ color: '#dc3545', marginTop: '1rem' }}>{error}</p>
-        <button onClick={loadDashboardData}>🔄 Retry</button>
+        <button 
+          onClick={loadDashboardData}
+          style={{
+            marginTop: '1.5rem',
+            padding: '0.75rem 1.5rem',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            fontWeight: '600'
+          }}
+        >
+          🔄 Retry
+        </button>
       </div>
     );
   }
@@ -87,12 +103,84 @@ function VendorDashboard({ user }) {
   return (
     <div className="dashboard">
 
-      {/* Welcome Card */}
+      {/* Welcome Card with Date Filter */}
       <div className="card vendor-info">
-        <h2>Welcome, {dashboardData.vendorName}! 👋</h2>
-        <p className="vendor-id">Vendor ID: {dashboardData.vendorId}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2>Welcome, {dashboardData.vendorName}! 👋</h2>
+            <p className="vendor-id">Vendor ID: {dashboardData.vendorId}</p>
+          </div>
+          
+          {/* ✅ Date Range Filter */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button 
+              onClick={() => setSelectedPeriod('week')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: selectedPeriod === 'week' ? '#fff' : 'rgba(255,255,255,0.2)',
+                color: selectedPeriod === 'week' ? '#667eea' : '#fff',
+                border: selectedPeriod === 'week' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: selectedPeriod === 'week' ? '600' : '500',
+                transition: 'all 0.2s'
+              }}
+            >
+              📅 Last 7 Days
+            </button>
+            <button 
+              onClick={() => setSelectedPeriod('month')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: selectedPeriod === 'month' ? '#fff' : 'rgba(255,255,255,0.2)',
+                color: selectedPeriod === 'month' ? '#667eea' : '#fff',
+                border: selectedPeriod === 'month' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: selectedPeriod === 'month' ? '600' : '500',
+                transition: 'all 0.2s'
+              }}
+            >
+              📅 Last 30 Days
+            </button>
+            <button 
+              onClick={() => setSelectedPeriod('quarter')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: selectedPeriod === 'quarter' ? '#fff' : 'rgba(255,255,255,0.2)',
+                color: selectedPeriod === 'quarter' ? '#667eea' : '#fff',
+                border: selectedPeriod === 'quarter' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: selectedPeriod === 'quarter' ? '600' : '500',
+                transition: 'all 0.2s'
+              }}
+            >
+              📅 Last 90 Days
+            </button>
+            <button 
+              onClick={() => setSelectedPeriod('all')}
+              style={{
+                padding: '0.5rem 1rem',
+                background: selectedPeriod === 'all' ? '#fff' : 'rgba(255,255,255,0.2)',
+                color: selectedPeriod === 'all' ? '#667eea' : '#fff',
+                border: selectedPeriod === 'all' ? '2px solid #fff' : '1px solid rgba(255,255,255,0.3)',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: selectedPeriod === 'all' ? '600' : '500',
+                transition: 'all 0.2s'
+              }}
+            >
+              📅 All Time
+            </button>
+          </div>
+        </div>
         <p style={{ opacity: 0.9, fontSize: '0.9rem', marginTop: '0.5rem' }}>
-          📊 Last 30 days overview • Updated in real-time
+          📊 {getPeriodLabel(selectedPeriod)} • Updated in real-time
         </p>
       </div>
 
@@ -107,12 +195,12 @@ function VendorDashboard({ user }) {
         </div>
 
         <div className="metric-card">
-           <h3>💰 Net Revenue</h3>
+          <h3>💰 Net Revenue</h3>
           <p className="metric-value">
-           ₹{dashboardData.monthlyRevenue?.toLocaleString() || 0}
+            ${dashboardData.monthlyRevenue?.toLocaleString() || 0}
           </p>
           <span style={{ fontSize: '0.85rem', color: '#28a745' }}>
-           After Commission
+            After Commission
           </span>
         </div>
 
@@ -120,7 +208,7 @@ function VendorDashboard({ user }) {
           <h3>✅ Completed Orders</h3>
           <p className="metric-value">{dashboardData.completedOrders || 0}</p>
           <span style={{ fontSize: '0.85rem', color: '#666' }}>
-           Successfully processed
+            Successfully processed
           </span>
         </div>
 
@@ -137,7 +225,7 @@ function VendorDashboard({ user }) {
           <p className="metric-value">
             ${dashboardData.totalCommissionPaid?.toLocaleString() || 0}
           </p>
-          <span>Platform fees</span>
+          <span>Platform fees (10%)</span>
         </div>
 
         <div className="metric-card">
@@ -153,7 +241,7 @@ function VendorDashboard({ user }) {
         <div className="metric-card">
           <h3>📊 Avg Order Value</h3>
           <p className="metric-value">
-            ${Number(dashboardData.averageOrderValue || 0).toFixed(2)} {/* ✅ FIX */}
+            ${Number(dashboardData.averageOrderValue || 0).toFixed(2)}
           </p>
           <span>Per transaction</span>
         </div>
@@ -172,7 +260,7 @@ function VendorDashboard({ user }) {
         <>
           <RevenueChart data={analyticsData.salesTrend} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(500px, 1fr))', gap: '1.5rem' }}>
             <TopProducts products={analyticsData.topProducts} />
             <CommissionChart data={analyticsData.commissionTrend} />
           </div>
@@ -183,31 +271,37 @@ function VendorDashboard({ user }) {
       <div className="card">
         <h2>📋 Recent Orders</h2>
         {dashboardData.recentOrders?.length > 0 ? (
-          <table className="orders-table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Date</th>
-                <th>Product</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dashboardData.recentOrders.map(order => (
-                <tr key={order.id}>
-                  <td>{order.id}</td>
-                  <td>{order.date}</td>
-                  <td>{order.product}</td>
-                  <td>${order.amount?.toLocaleString()}</td>
-                  <td>{order.status}</td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="orders-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>Product</th>
+                  <th>Amount</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {dashboardData.recentOrders.map(order => (
+                  <tr key={order.id}>
+                    <td style={{ fontFamily: 'monospace' }}>{order.id}</td>
+                    <td>{order.date}</td>
+                    <td>{order.product}</td>
+                    <td style={{ fontWeight: '600' }}>${order.amount?.toLocaleString()}</td>
+                    <td>
+                      <span className={`status-badge status-${order.status.toLowerCase()}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-            No recent orders
+            No orders in this period
           </p>
         )}
       </div>
@@ -218,6 +312,17 @@ function VendorDashboard({ user }) {
       />
     </div>
   );
+}
+
+// ✅ Helper function for period labels
+function getPeriodLabel(period) {
+  const labels = {
+    'week': 'Last 7 days overview',
+    'month': 'Last 30 days overview',
+    'quarter': 'Last 90 days overview',
+    'all': 'All-time overview'
+  };
+  return labels[period] || 'Last 30 days overview';
 }
 
 export default VendorDashboard;
