@@ -1,0 +1,146 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+
+const client = new DynamoDBClient({ region: 'ap-south-1' });
+const dynamodb = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
+    console.log('Event:', JSON.stringify(event, null, 2));
+    
+    try {
+        const vendorId = event.requestContext.authorizer.claims.sub;
+        const period = event.queryStringParameters?.period || 'month'; // ✅ Get period from query
+
+        console.log('Fetching data for period:', period);
+
+        // ✅ Query ALL data for vendor (no date filter in DynamoDB)
+        const params = {
+            TableName: 'VendorSales',
+            IndexName: 'vendor-timestamp-index',
+            KeyConditionExpression: 'vendor_id = :vendorId',
+            ExpressionAttributeValues: {
+                ':vendorId': vendorId
+            }
+        };
+
+        const command = new QueryCommand(params);
+        const result = await dynamodb.send(command);
+        const allTransactions = result.Items || [];
+
+        console.log(`Found ${allTransactions.length} total transactions`);
+
+        // ✅ Filter by date range in JavaScript
+        const { startDate, endDate } = getDateRange(period);
+        const transactions = allTransactions.filter(t => {
+            const transactionDate = new Date(t.timestamp);
+            return transactionDate >= startDate && transactionDate <= endDate;
+        });
+
+        console.log(`Filtered to ${transactions.length} transactions for period: ${period}`);
+
+        const metrics = calculateMetrics(transactions);
+        
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                vendorId: vendorId,
+                vendorName: 'Your Business',
+                period: period,
+                dateRange: {
+                    start: startDate.toISOString().split('T')[0],
+                    end: endDate.toISOString().split('T')[0]
+                },
+                totalSales: metrics.totalGross,
+                monthlyRevenue: metrics.totalNet,
+                completedOrders: metrics.completedCount,
+                pendingOrders: metrics.pendingCount,
+                refundedOrders: metrics.refundedCount,
+                totalTransactions: transactions.length,
+                totalCommissionPaid: metrics.totalCommission,
+                totalRefunds: metrics.totalRefunds,
+                refundRate: metrics.refundRate,
+                averageOrderValue: metrics.avgOrderValue,
+                recentOrders: transactions
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                    .slice(0, 10)
+                    .map(t => ({
+                        id: t.order_id,
+                        date: t.timestamp.split('T')[0],
+                        amount: Number(t.gross_amount || 0),
+                        status: t.payment_status,
+                        product: t.product_name || t.product || 'Unknown Product'
+                    }))
+            })
+        };
+
+    } catch (error) {
+        console.error('Error:', error);
+        return {
+            statusCode: 500,
+            headers: { 
+                'Access-Control-Allow-Origin': '*',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                error: error.message,
+                stack: error.stack
+            })
+        };
+    }
+};
+
+// ✅ Get date range based on period
+function getDateRange(period) {
+    const endDate = new Date();
+    const startDate = new Date();
+
+    switch(period) {
+        case 'week':
+            startDate.setDate(startDate.getDate() - 7);
+            break;
+        case 'month':
+            startDate.setDate(startDate.getDate() - 30);
+            break;
+        case 'quarter':
+            startDate.setDate(startDate.getDate() - 90);
+            break;
+        case 'all':
+            startDate.setFullYear(2020, 0, 1); // Start from Jan 1, 2020
+            break;
+        default:
+            startDate.setDate(startDate.getDate() - 30);
+    }
+
+    return { startDate, endDate };
+}
+
+function calculateMetrics(transactions) {
+    const completed = transactions.filter(t => t.payment_status === 'COMPLETED');
+    const refunded = transactions.filter(t => t.payment_status === 'REFUNDED');
+    const pending = transactions.filter(t => t.payment_status === 'PENDING');
+
+    const totalGross = completed.reduce((sum, t) => sum + Number(t.gross_amount || 0), 0);
+    const totalCommission = completed.reduce((sum, t) => sum + Number(t.platform_commission || 0), 0);
+    const totalNet = completed.reduce((sum, t) => sum + Number(t.net_amount || 0), 0);
+    const totalRefunds = refunded.reduce((sum, t) => sum + Number(t.refund_amount || 0), 0);
+
+    return {
+        completedCount: completed.length,
+        pendingCount: pending.length,
+        refundedCount: refunded.length,
+        totalGross: Number(totalGross.toFixed(2)),
+        totalCommission: Number(totalCommission.toFixed(2)),
+        totalNet: Number(totalNet.toFixed(2)),
+        totalRefunds: Number(totalRefunds.toFixed(2)),
+        refundRate: transactions.length > 0 
+            ? Number(((refunded.length / transactions.length) * 100).toFixed(2))
+            : 0,
+        avgOrderValue: completed.length > 0
+            ? Number((totalGross / completed.length).toFixed(2))
+            : 0
+    };
+}
