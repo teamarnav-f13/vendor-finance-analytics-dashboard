@@ -1,0 +1,88 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+
+const client = new DynamoDBClient({ region: "ap-south-1" });
+const dynamodb = DynamoDBDocumentClient.from(client);
+const sns = new SNSClient({ region: "ap-south-1" });
+
+export const handler = async (event) => {
+  try {
+    const claims = event?.requestContext?.authorizer?.claims;
+
+    if (!claims) {
+      return {
+        statusCode: 401,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: "Unauthorized" })
+      };
+    }
+
+    const vendorId = claims.sub;
+    const body = JSON.parse(event.body);
+
+    const required = ["product_id", "product_name", "quantity", "gross_amount"];
+    for (const field of required) {
+      if (!body[field]) {
+        return {
+          statusCode: 400,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          body: JSON.stringify({ error: `Missing field: ${field}` })
+        };
+      }
+    }
+
+    const commissionRate = 0.10;
+    const platformCommission = body.gross_amount * commissionRate;
+    const netAmount = body.gross_amount - platformCommission;
+
+    const transaction = {
+      vendor_id: vendorId,
+      timestamp: new Date().toISOString(),
+      order_id: `ORD-${Date.now()}`,
+      product_id: body.product_id,
+      product_name: body.product_name,
+      quantity: body.quantity,
+      gross_amount: Number(body.gross_amount),
+      platform_commission: Number(platformCommission.toFixed(2)),
+      net_amount: Number(netAmount.toFixed(2)),
+      payment_status: "PENDING",
+      refund_amount: 0,
+      created_at: new Date().toISOString()
+    };
+
+    await dynamodb.send(
+      new PutCommand({
+        TableName: "VendorSales",
+        Item: transaction
+      })
+    );
+
+    if (process.env.SNS_TOPIC_ARN) {
+      await sns.send(
+        new PublishCommand({
+          TopicArn: process.env.SNS_TOPIC_ARN,
+          Subject: "New Order",
+          Message: `New order ${transaction.order_id} for ₹${transaction.gross_amount}`
+        })
+      );
+    }
+
+    return {
+      statusCode: 201,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({
+        message: "Transaction created",
+        data: transaction
+      })
+    };
+
+  } catch (error) {
+    console.error("Transaction Error:", error);
+    return {
+      statusCode: 500,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+};
