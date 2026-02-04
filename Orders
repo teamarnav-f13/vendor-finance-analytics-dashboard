@@ -1,0 +1,67 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand } from "@aws-sdk/lib-dynamodb";
+
+const client = new DynamoDBClient({ region: "ap-south-1" });
+const dynamodb = DynamoDBDocumentClient.from(client);
+
+export const handler = async (event) => {
+  try {
+    const claims = event?.requestContext?.authorizer?.claims;
+
+    if (!claims) {
+      return {
+        statusCode: 401,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: "Unauthorized" })
+      };
+    }
+
+    const vendorId = claims.sub;
+    const status = event?.queryStringParameters?.status || "all";
+    const limit = parseInt(event?.queryStringParameters?.limit || "50");
+
+    const params = {
+      TableName: "VendorSales",
+      IndexName: "vendor-order-index", // ✅ CORRECT
+      KeyConditionExpression: "vendor_id = :v",
+      ExpressionAttributeValues: {
+        ":v": vendorId
+      },
+      Limit: limit,
+      ScanIndexForward: false
+    };
+
+    if (status !== "all") {
+      params.FilterExpression =
+        "attribute_exists(payment_status) AND payment_status = :s";
+      params.ExpressionAttributeValues[":s"] = status.toUpperCase();
+    }
+
+    const result = await dynamodb.send(new QueryCommand(params));
+    const items = result.Items ?? [];
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Authorization,Content-Type",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        vendorId,
+        count: items.length,
+        data: items
+      })
+    };
+
+  } catch (error) {
+    console.error("Orders Lambda Error:", error);
+
+    return {
+      statusCode: 500,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+};
