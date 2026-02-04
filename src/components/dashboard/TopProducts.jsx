@@ -24,7 +24,7 @@ function TopProducts({ products }) {
             <XAxis 
               dataKey="productName" 
               tick={{ fontSize: 11 }}
-              angle={-45}
+              angle={-30}
               textAnchor="end"
               height={100}
               stroke="#666"
